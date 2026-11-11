@@ -56,6 +56,11 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* 方向与使能脚：全部在 GPIOB */
+#define AIN1 GPIO_PIN_15
+#define AIN2 GPIO_PIN_13
+#define STBY GPIO_PIN_14
+/* 注意：PWM 走 TIM1_CH1，对应的是 PA8，不是 PB8 */
 
 /* USER CODE END 0 */
 
@@ -93,15 +98,53 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  /* 1. 补上 GPIOB 时钟与引脚配置
+         CubeMX 的 .ioc 里没有配置 PB13/PB14/PB15，
+         MX_GPIO_Init() 只使能了 GPIOA 时钟，导致下面所有
+         GPIOB 写操作全部失效，STBY 一直是低电平 -> 芯片待机 */
+  GPIO_InitTypeDef gpio = {0};
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  gpio.Pin   = AIN1 | AIN2 | STBY;
+  gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+  gpio.Pull  = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &gpio);
+
+  /* 2. PWM 改成 20 kHz：8 MHz / (0+1) / (399+1) = 20 kHz
+         原来 PSC=0 / ARR=65535，只有 122 Hz，会啸叫且抖得厉害 */
+  __HAL_TIM_SET_PRESCALER(&htim1, 0);
+  __HAL_TIM_SET_AUTORELOAD(&htim1, 399);
+
+  /* 3. 顺序：先定方向 -> 再开 STBY -> 最后给 PWM */
+  HAL_GPIO_WritePin(GPIOB, AIN1, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, AIN2, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, STBY, GPIO_PIN_SET);
+
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int16_t duty = 0;
+  int16_t step = 10;
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    /* 占空比在 0~399 之间来回扫，用来确认 PWM 真的在调制。
+       如果转速完全不跟着变（一直全速或一直不动），说明 PWM 没接到驱动。
+       验证完改回固定值即可，例如 200 = 50% */
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)duty);
+    HAL_Delay(15);
+
+    if (duty >= 399) step = -10;
+    if (duty <= 0)   step =  10;
+    duty += step;
+
   }
   /* USER CODE END 3 */
 }
