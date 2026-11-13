@@ -24,7 +24,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "encoder.h"   /* 我们自己写的编码器驱动 */
+#include <stdio.h>     /* printf */
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -122,6 +123,16 @@ int main(void)
 
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 
+  /* 4. 编码器初始化：启动 TIM5 的编码器接口（A 相 PA0，B 相 PA1） */
+  Encoder_Init();
+
+  /* 5. printf 不缓冲：否则数据攒满缓冲区才发，串口助手里会一片空白 */
+  setvbuf(stdout, NULL, _IONBF, 0);
+
+  /* 6. 先让电机停下来，这样可以用手转轮子做纯编码器验证。
+        想用电机带着转，把 0 改成 150（约 37% 占空比）*/
+  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -135,15 +146,31 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    /* 占空比在 0~399 之间来回扫，用来确认 PWM 真的在调制。
-       如果转速完全不跟着变（一直全速或一直不动），说明 PWM 没接到驱动。
-       验证完改回固定值即可，例如 200 = 50% */
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)duty);
-    HAL_Delay(15);
+    /* 每 10ms 读一次编码器，每 100ms 打印一次
+       d  = 最近 10ms 转了多少格（带符号）
+       t  = 从开机到现在累计多少格
+       mm = 换算成毫米 */
 
-    if (duty >= 399) step = -10;
-    if (duty <= 0)   step =  10;
-    duty += step;
+    static uint32_t last_tick = 0;
+    static uint8_t  print_cnt = 0;
+
+    if ((HAL_GetTick() - last_tick) >= 10U)
+    {
+      last_tick = HAL_GetTick();
+
+      Encoder_Update();          /* 读 CNT，算增量 */
+
+      if (++print_cnt >= 10U)    /* 10 次 × 10ms = 100ms 打印一次 */
+      {
+        print_cnt = 0;
+        printf("d=%d  t=%ld  mm=%ld\r\n",
+               (int)Encoder_GetDelta(),
+               (long)Encoder_GetTotal(),
+               (long)Encoder_GetDistance_mm());
+      }
+    }
+
+    HAL_Delay(1);   /* 让出 CPU，避免 while 空转 */
 
   }
   /* USER CODE END 3 */
