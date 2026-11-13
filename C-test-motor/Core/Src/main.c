@@ -18,13 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "motor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,7 +35,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+/* 1 = 全速直通测试（固定 1000‰，绕过斜坡）；0 = 0→+600→−600 来回扫 */
+#define MOTOR_FULL_SPEED_TEST  1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -50,17 +52,14 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/* 方向与使能脚：全部在 GPIOB */
-#define AIN1 GPIO_PIN_15
-#define AIN2 GPIO_PIN_13
-#define STBY GPIO_PIN_14
-/* 注意：PWM 走 TIM1_CH1，对应的是 PA8，不是 PB8 */
+/* 引脚定义已移到 motor.h，通过 g_motor[] 表统一管理 */
 
 /* USER CODE END 0 */
 
@@ -98,36 +97,42 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  /* 1. 补上 GPIOB 时钟与引脚配置
-         CubeMX 的 .ioc 里没有配置 PB13/PB14/PB15，
-         MX_GPIO_Init() 只使能了 GPIOA 时钟，导致下面所有
-         GPIOB 写操作全部失效，STBY 一直是低电平 -> 芯片待机 */
-  GPIO_InitTypeDef gpio = {0};
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  gpio.Pin   = AIN1 | AIN2 | STBY;
-  gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-  gpio.Pull  = GPIO_NOPULL;
-  gpio.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &gpio);
-
-  /* 2. PWM 改成 20 kHz：8 MHz / (0+1) / (399+1) = 20 kHz
-         原来 PSC=0 / ARR=65535，只有 122 Hz，会啸叫且抖得厉害 */
+  /* PWM 改成 20 kHz：8 MHz / (0+1) / (399+1)
+     必须在 Motor_InitAll() 之前，因为 SetDuty 会按 ARR 换算 CCR */
   __HAL_TIM_SET_PRESCALER(&htim1, 0);
   __HAL_TIM_SET_AUTORELOAD(&htim1, 399);
 
-  /* 3. 顺序：先定方向 -> 再开 STBY -> 最后给 PWM */
-  HAL_GPIO_WritePin(GPIOB, AIN1, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOB, AIN2, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, STBY, GPIO_PIN_SET);
-
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  Motor_InitAll();      /* 配方向脚 + 启动 PWM，此时 STBY 仍是低 */
+  Motor_Enable(1);      /* 打开驱动芯片，忘掉这句电机不会动 */
 
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
+  MX_FREERTOS_Init();
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  int16_t duty = 0;
-  int16_t step = 10;
+
+#if MOTOR_FULL_SPEED_TEST
+  /* 全速直通测试：不经过斜坡、不经过 target，直接给 1000‰。
+     这一档如果还是明显偏慢，就一定是电源/接线/电机参数的问题，不是代码。 */
+  while (1)
+  {
+    Motor_SetDuty(&g_motor[0], 1000);
+    HAL_Delay(100);
+  }
+#else
+  int16_t  target = 0;
+  int16_t  step   = 100;
+  uint16_t cnt    = 0;
+
+  Motor_SetTarget(&g_motor[0], target);
 
   while (1)
   {
@@ -135,17 +140,22 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    /* 占空比在 0~399 之间来回扫，用来确认 PWM 真的在调制。
-       如果转速完全不跟着变（一直全速或一直不动），说明 PWM 没接到驱动。
-       验证完改回固定值即可，例如 200 = 50% */
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, (uint32_t)duty);
-    HAL_Delay(15);
+    /* 10 ms 一拍，duty 按 slew（每拍 60‰）逐步逼近 target */
+    Motor_Update(&g_motor[0]);
+    HAL_Delay(10);
 
-    if (duty >= 399) step = -10;
-    if (duty <= 0)   step =  10;
-    duty += step;
+    /* 每 500 ms 换一档目标：0 → +600 → −600 → 0 循环，
+       顺便验证正转、反转以及换向时的"先归零"保护 */
+    if (++cnt >= 50) {
+        cnt = 0;
+        if (target >=  600) step = -100;
+        if (target <= -600) step =  100;
+        target += step;
+        Motor_SetTarget(&g_motor[0], target);
+    }
 
   }
+#endif
   /* USER CODE END 3 */
 }
 
@@ -188,6 +198,28 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM7 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM7)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
