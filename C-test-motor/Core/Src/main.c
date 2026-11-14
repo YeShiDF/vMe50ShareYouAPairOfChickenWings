@@ -105,6 +105,8 @@ int main(void)
   Motor_InitAll();      /* 配方向脚 + 启动 PWM，此时 STBY 仍是低 */
   Motor_Enable(1);      /* 打开驱动芯片，忘掉这句电机不会动 */
 
+  Encoder_Init();       /* 启动 TIM5 编码器接口并清零，必须在任务采样前 */
+
   /* USER CODE END 2 */
 
   /* Init scheduler */

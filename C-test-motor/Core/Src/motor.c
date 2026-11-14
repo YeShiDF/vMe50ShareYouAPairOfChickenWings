@@ -1,5 +1,6 @@
 #include "motor.h"
 #include "tim.h"
+#include "encoder.h"   /* Encoder_GetDelta()：计数的唯一来源 */
 
 /* ---------------- 电机表 ----------------
  * 加一路电机只要在这里填一行，其余逻辑不用改。
@@ -23,6 +24,7 @@ Motor_t g_motor[MOTOR_NUM] = {
     { 0 },
 };
 
+//初始化
 /* 按端口打开对应 GPIO 时钟，CubeMX 的 MX_GPIO_Init 里没有使能 GPIOB */
 static void Motor_Clock(GPIO_TypeDef *port)
 {
@@ -32,6 +34,7 @@ static void Motor_Clock(GPIO_TypeDef *port)
     else if (port == GPIOD) __HAL_RCC_GPIOD_CLK_ENABLE();
 }
 
+//初始化端口引脚，等效配置MX
 /* 方向脚统一配成推挽输出，初始低电平（高阻/滑行态） */
 static void Motor_PinInit(Motor_t *m)
 {
@@ -68,7 +71,7 @@ void Motor_InitAll(void)
 
     for (uint8_t i = 0; i < MOTOR_NUM; i++) {
         Motor_t *m = &g_motor[i];
-        if (m->htim == NULL) continue;
+        if (m->htim == NULL) continue;//跳过没接线的
 
         Motor_PinInit(m);
         m->duty   = 0;
@@ -120,6 +123,7 @@ void Motor_SetDuty(Motor_t *m, int16_t duty)
     uint32_t span = __HAL_TIM_GET_AUTORELOAD(m->htim) + 1u;
     uint32_t mag  = (uint32_t)(duty >= 0 ? duty : -duty);
     __HAL_TIM_SET_COMPARE(m->htim, m->channel, mag * span / MOTOR_DUTY_MAX);
+    //CCR = |duty| × (ARR+1) / 1000
 }
 
 void Motor_SetTarget(Motor_t *m, int16_t target)
@@ -200,9 +204,9 @@ float Motor_UpdateRpm(Motor_t *m)
 {
     if (m == NULL || m->enc_tim == NULL) return 0.0f;
 
-    int16_t now = (int16_t)__HAL_TIM_GET_COUNTER(m->enc_tim);
-    int16_t d   = (int16_t)(now - m->enc_last);   /* 自动处理回绕，且自带方向符号 */
-    m->enc_last = now;
+    /* 计数只从 encoder.c 取：读 CNT、处理回绕都归它管，
+       这里拿到的就是"上一拍到现在转了多少格" */
+    int16_t d = Encoder_GetDelta();
     m->enc_total += d;
 
     float raw = (float)d * 60.0f / (MOTOR_ENC_CPR * MOTOR_ENC_DT);

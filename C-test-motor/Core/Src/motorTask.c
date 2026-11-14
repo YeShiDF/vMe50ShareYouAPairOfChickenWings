@@ -1,5 +1,6 @@
 #include "cmsis_os2.h"
 #include "motor.h"
+#include "encoder.h"        /* Encoder_Update() */
 #include "freertos_os2.h"
 
 /* 采样周期：10 个 tick。
@@ -13,20 +14,16 @@ void StartTaskMtrGetSpd(void *argument)
 {
     (void)argument;
 
-    /* 进入循环前重新对齐计数快照。
-     * Motor_InitAll() 里记的 enc_last 到现在可能已经过了几百毫秒，
-     * 不重新对齐的话第一拍会算出一个大得离谱的差值。 */
-    for (uint8_t i = 0; i < MOTOR_NUM; i++) {
-        if (g_motor[i].enc_tim != NULL) {
-            g_motor[i].enc_last = (int16_t)__HAL_TIM_GET_COUNTER(g_motor[i].enc_tim);
-            g_motor[i].rpm      = 0.0f;
-        }
-    }
+    /* 进循环前先空转一拍：Encoder_Update() 会把当前 CNT 记成基准，
+     * 这一次的 delta 不参与计算，避免第一拍算出大得离谱的转速。 */
+    Encoder_Update();
 
     uint32_t wake = osKernelGetTickCount();
 
     for (;;) {
-        /* ---- 采样：每路有编码器的电机更新一次转速 ---- */
+        /* ---- 先读编码器，再算转速 ---- */
+        Encoder_Update();
+
         for (uint8_t i = 0; i < MOTOR_NUM; i++) {
             if (g_motor[i].enc_tim != NULL) {
                 Motor_UpdateRpm(&g_motor[i]);

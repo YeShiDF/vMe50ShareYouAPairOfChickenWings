@@ -33,10 +33,10 @@
 
 /* ---------------- 编码器参数 ----------------
  * 规格书：减速后编码器线数 265.2 线/输出轴圈
- * TIM5 当前是 TIM_ENCODERMODE_TI2（2 倍频）-> 265.2 × 2 = 530.4
- * 若在 CubeMX 里改成 TI12（4 倍频），这里必须改成 1060.8，否则转速差一倍
+ * TIM5 已改为 TIM_ENCODERMODE_TI12（4 倍频）-> 265.2 × 4 = 1060.8
+ * 注意：改倍频后这个数必须同步改，否则转速差一倍
  * ------------------------------------------ */
-#define MOTOR_ENC_CPR   530.4f
+#define MOTOR_ENC_CPR   1060.8f
 
 /* 测速采样周期，必须与实际调用间隔严格一致 */
 #define MOTOR_ENC_DT    0.010f
@@ -72,14 +72,18 @@ void Motor_InitAll(void);
 /* 使能/失能整片驱动（STBY）。0 = 待机，输出全关 */
 void Motor_Enable(uint8_t on);
 
-/* 直接给定占空比，立即生效（调试用） */
-void Motor_SetDuty(Motor_t *m, int16_t duty);
 
+//中层，斜坡
 /* 设置斜坡目标，由 Motor_Update() 逐步逼近（正式控制用） */
 void Motor_SetTarget(Motor_t *m, int16_t target);
 
 /* 按固定周期调用，把 duty 朝 target 推进一步 */
 void Motor_Update(Motor_t *m);
+
+
+//底层
+/* 直接给定占空比，立即生效（调试用） */
+void Motor_SetDuty(Motor_t *m, int16_t duty);
 
 /* 短路制动：IN1=IN2=1，电机两端被短接，停得快 */
 void Motor_Brake(Motor_t *m);
@@ -87,6 +91,8 @@ void Motor_Brake(Motor_t *m);
 /* 滑行：IN1=IN2=0，输出高阻，靠惯性慢慢停 */
 void Motor_Coast(Motor_t *m);
 
+
+//上层
 /* 按编号操作，供上层运动学层使用 */
 void Motor_SetSpeed(uint8_t id, int16_t duty);
 int16_t Motor_GetSpeed(uint8_t id);
