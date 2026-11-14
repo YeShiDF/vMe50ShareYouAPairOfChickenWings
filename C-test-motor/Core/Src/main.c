@@ -99,39 +99,7 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  /* 1. 补上 GPIOB 时钟与引脚配置
-         CubeMX 的 .ioc 里没有配置 PB13/PB14/PB15，
-         MX_GPIO_Init() 只使能了 GPIOA 时钟，导致下面所有
-         GPIOB 写操作全部失效，STBY 一直是低电平 -> 芯片待机 */
-  GPIO_InitTypeDef gpio = {0};
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  gpio.Pin   = AIN1 | AIN2 | STBY;
-  gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-  gpio.Pull  = GPIO_NOPULL;
-  gpio.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &gpio);
 
-  /* 2. PWM 改成 20 kHz：8 MHz / (0+1) / (399+1) = 20 kHz
-         原来 PSC=0 / ARR=65535，只有 122 Hz，会啸叫且抖得厉害 */
-  __HAL_TIM_SET_PRESCALER(&htim1, 0);
-  __HAL_TIM_SET_AUTORELOAD(&htim1, 399);
-
-  /* 3. 顺序：先定方向 -> 再开 STBY -> 最后给 PWM */
-  HAL_GPIO_WritePin(GPIOB, AIN1, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOB, AIN2, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, STBY, GPIO_PIN_SET);
-
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-
-  /* 4. 编码器初始化：启动 TIM5 的编码器接口（A 相 PA0，B 相 PA1） */
-  Encoder_Init();
-
-  /* 5. printf 不缓冲：否则数据攒满缓冲区才发，串口助手里会一片空白 */
-  setvbuf(stdout, NULL, _IONBF, 0);
-
-  /* 6. 先让电机停下来，这样可以用手转轮子做纯编码器验证。
-        想用电机带着转，把 0 改成 150（约 37% 占空比）*/
-  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
 
   /* USER CODE END 2 */
 
