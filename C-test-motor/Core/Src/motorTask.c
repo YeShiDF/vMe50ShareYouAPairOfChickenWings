@@ -48,7 +48,7 @@ void StartMtrTestTask(void *argument)
 
     /* Motor_InitAll() 已经在 main.c 的 osKernelStart() 之前调用过了。
        这里不要再调：它会重新把 duty/target 清零、重启 PWM，
-       还会重置 enc_last，让测速任务丢一拍。
+       打断测速任务已经攒下的节奏。
        只需要把驱动芯片打开就行。 */
     Motor_Enable(1);
 

@@ -6,7 +6,7 @@
  * 加一路电机只要在这里填一行，其余逻辑不用改。
  * htim 填 NULL 的条目会被所有接口自动跳过。
  * 字段顺序：in1口, in1脚, in2口, in2脚, 定时器, 通道,
- *           duty, target, slew, 编码器定时器, 上拍计数, rpm
+ *           duty, target, slew, 编码器定时器, rpm, 累计计数
  * ---------------------------------------- */
 Motor_t g_motor[MOTOR_NUM] = {
     /* M1：PB15 / PB13 / PA8(TIM1_CH1)，编码器 PA0/PA1(TIM5) */
@@ -14,11 +14,11 @@ Motor_t g_motor[MOTOR_NUM] = {
       MTR1_IN2_PORT, MTR1_IN2_PIN,
       &htim1, TIM_CHANNEL_1,
       0, 0, MOTOR_SLEW_DEF,
-      &htim5, 0, 0.0f, 0 },
+      &htim5, 0.0f, 0 },
 
     /* M2 / M3 / M4：接线后照上面的格式补，例如
      * { GPIOB, GPIO_PIN_12, GPIOC, GPIO_PIN_0, &htim1, TIM_CHANNEL_2,
-     *   0, 0, MOTOR_SLEW_DEF, NULL, 0, 0.0f }, */
+     *   0, 0, MOTOR_SLEW_DEF, NULL, 0.0f }, */
     { 0 },
     { 0 },
     { 0 },
@@ -79,16 +79,13 @@ void Motor_InitAll(void)
 
         HAL_TIM_PWM_Start(m->htim, m->channel);
 
-        /* 编码器：启动后立刻记下当前计数，避免第一拍算出一个巨大的差值 */
-        if (m->enc_tim != NULL) {
-            HAL_TIM_Encoder_Start(m->enc_tim, TIM_CHANNEL_ALL);
-            m->enc_last = (int16_t)__HAL_TIM_GET_COUNTER(m->enc_tim);
-            m->rpm      = 0.0f;
-        }
+        /* 编码器不在这里启动：由 main.c 里的 Encoder_Init() 统一负责。
+           两边都启动/清零同一个 TIM5，会让对方的"上一拍计数"失效。 */
+        m->rpm = 0.0f;
     }
 }
 
-void Motor_Enable(uint8_t on)
+void Motor_Enable(uint8_t on)//作用：打开或者关闭总使能
 {
     HAL_GPIO_WritePin(STBY_PORT, STBY_PIN, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
@@ -99,7 +96,7 @@ void Motor_Enable(uint8_t on)
     }
 }
 
-void Motor_SetDuty(Motor_t *m, int16_t duty)
+void Motor_SetDuty(Motor_t *m, int16_t duty)//限幅，正转反转滑行，改变占空比
 {
     if (m == NULL || m->htim == NULL) return;
 
@@ -126,7 +123,7 @@ void Motor_SetDuty(Motor_t *m, int16_t duty)
     //CCR = |duty| × (ARR+1) / 1000
 }
 
-void Motor_SetTarget(Motor_t *m, int16_t target)
+void Motor_SetTarget(Motor_t *m, int16_t target)//记下目标值并限幅
 {
     if (m == NULL || m->htim == NULL) return;
 
@@ -135,7 +132,7 @@ void Motor_SetTarget(Motor_t *m, int16_t target)
     m->target = target;
 }
 
-void Motor_Update(Motor_t *m)
+void Motor_Update(Motor_t *m)//（slew限制）
 {
     if (m == NULL || m->htim == NULL) return;
 
@@ -197,8 +194,8 @@ int16_t Motor_GetSpeed(uint8_t id)
 /* 测速：按固定周期调用（周期必须等于 MOTOR_ENC_DT），不阻塞
  *
  *   rpm = Δcnt × 60 / (CPR × Δt)
- *       = Δcnt × 60 / (530.4 × 0.01)
- *       = Δcnt × 11.31
+ *       = Δcnt × 60 / (1060.8 × 0.01)
+ *       = Δcnt × 5.656
  */
 float Motor_UpdateRpm(Motor_t *m)
 {

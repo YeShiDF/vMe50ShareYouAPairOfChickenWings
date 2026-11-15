@@ -56,8 +56,7 @@ typedef struct {
     int16_t            target;    /* 斜坡目标值 */
     uint16_t           slew;      /* 每次 Update 的最大步长 */
 
-    TIM_HandleTypeDef *enc_tim;   /* 编码器定时器，NULL 表示没有 */
-    int16_t            enc_last;  /* 上一拍计数快照 */
+    TIM_HandleTypeDef *enc_tim;   /* 编码器定时器，NULL 表示没有；计数由 encoder.c 统一维护 */
     float              rpm;       /* 输出轴（轮子）转速，滤波后 */
     int32_t            enc_total; /* 累计计数，直线纠偏/里程用 */
 } Motor_t;
