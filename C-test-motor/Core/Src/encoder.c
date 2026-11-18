@@ -1,12 +1,12 @@
 /**
   ******************************************************************************
   * @file    encoder.c
-  * @brief   霍尔编码器驱动实现（TIM5 编码器模式）
+  * @brief   霍尔编码器驱动实现（TIM2 编码器模式）
   ******************************************************************************
   */
 
 #include "encoder.h"
-#include "tim.h"        /* htim5 */
+#include "tim.h"        /* htim2 */
 #include "usart.h"      /* huart2，printf 重定向要用 */
 
 /* ==========================================================================
@@ -48,14 +48,14 @@ int __io_putchar(int ch)
  */
 void Encoder_Init(void)
 {
-  /* 打开 TIM5 的编码器接口，两个通道都用 */
-  /* （这一步不能少：CubeMX 只是"配置"了 TIM5，没有"启动"它） */
-  HAL_TIM_Encoder_Start(&htim5, TIM_CHANNEL_ALL);
+  /* 打开 TIM2 的编码器接口，两个通道都用 */
+  /* （这一步不能少：CubeMX 只是"配置"了 TIM2，没有"启动"它） */
+  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
 
   /* 计数器从 0 开始 */
-  __HAL_TIM_SET_COUNTER(&htim5, 0);
+  __HAL_TIM_SET_COUNTER(&htim2, 0);
 
-  s_last_cnt  = (int16_t)__HAL_TIM_GET_COUNTER(&htim5);
+  s_last_cnt  = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
   s_delta_cnt = 0;
   s_total_cnt = 0;
 }
@@ -67,7 +67,7 @@ void Encoder_Update(void)//强制转化成int16_t有利于判断正转还是反�
 {
   /* now 是 int16_t：把 0 ~ 65535 的 CNT 解释成 -32768 ~ 32767
      这样正转反转都能正确表示 */
-  int16_t now = (int16_t)__HAL_TIM_GET_COUNTER(&htim5);
+  int16_t now = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
 
   /* 差值用 int16_t 做减法，天然处理 65535 -> 0 的回绕。
      例：上次 65530，这次 3，now - last = 3 - 65530 = -65527

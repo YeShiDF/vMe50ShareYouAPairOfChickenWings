@@ -9,12 +9,12 @@
  *           duty, target, slew, 编码器定时器, rpm, 累计计数
  * ---------------------------------------- */
 Motor_t g_motor[MOTOR_NUM] = {
-    /* M1：PB15 / PB13 / PA8(TIM1_CH1)，编码器 PA0/PA1(TIM5) */
+    /* M1：PB15 / PB13 / PA8(TIM1_CH1)，编码器 PA0/PA1(TIM2) */
     { MTR1_IN1_PORT, MTR1_IN1_PIN,
       MTR1_IN2_PORT, MTR1_IN2_PIN,
       &htim1, TIM_CHANNEL_1,
       0, 0, MOTOR_SLEW_DEF,
-      &htim5, 0.0f, 0 },
+      &htim2, 0.0f, 0 },
 
     /* M2 / M3 / M4：接线后照上面的格式补，例如
      * { GPIOB, GPIO_PIN_12, GPIOC, GPIO_PIN_0, &htim1, TIM_CHANNEL_2,
@@ -80,7 +80,7 @@ void Motor_InitAll(void)
         HAL_TIM_PWM_Start(m->htim, m->channel);
 
         /* 编码器不在这里启动：由 main.c 里的 Encoder_Init() 统一负责。
-           两边都启动/清零同一个 TIM5，会让对方的"上一拍计数"失效。 */
+           两边都启动/清零同一个 TIM2，会让对方的"上一拍计数"失效。 */
         m->rpm = 0.0f;
     }
 }

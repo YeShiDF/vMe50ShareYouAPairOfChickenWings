@@ -52,12 +52,29 @@ void StartMtrTestTask(void *argument)
        只需要把驱动芯片打开就行。 */
     Motor_Enable(1);
 
-    Motor_SetTarget(&g_motor[0], 1000);
-
-    /* 任务函数绝对不能返回。一旦 return，FreeRTOS 会进入
-       prvTaskExitError：关中断 + 死循环，整个系统直接停摆。 */
+    /* ---------- 开环测试 ----------
+     * 直接给占空比，不经过 Motor_SetTarget()/Motor_Update() 那一层斜坡。
+     * 目的：排除 PID 和斜率限制，单纯验证「驱动板 → 电机 → 编码器」这条链路。
+     *
+     * 节奏：停 1s → 20% 转 2s → 停 1s → 40% 转 2s → 停 1s，然后循环。
+     * 判断标准：40% 时的 rpm 应该大约是 20% 时的 2 倍（空载、开环近似线性）。
+     * 任务函数绝对不能 return，否则会进 prvTaskExitError 关中断死循环。 */
+    /* ---------- 线性度验证（20% → 30% → 40% 阶梯） ----------
+     * 每档转 4 秒，间隔停 1 秒。
+     * 空载开环下，转速应该和占空比近似成正比：
+     *   20% ≈ 150 rpm   30% ≈ 225 rpm   40% ≈ 300 rpm
+     * 如果 40% 明显低于 300（甚至中途停转），说明电源限流了。        */
     for (;;) {
-        Motor_Update(&g_motor[0]);   /* 每 10 ms 朝 target 推进一步 */
-        osDelay(10);
+        Motor_SetDuty(&g_motor[0], 0);      /* 停 1 秒，作为参考零点 */
+        osDelay(1000);
+
+        Motor_SetDuty(&g_motor[0], 200);    /* 20% */
+        osDelay(4000);
+
+        Motor_SetDuty(&g_motor[0], 300);    /* 30% */
+        osDelay(4000);
+
+        Motor_SetDuty(&g_motor[0], 400);    /* 40% */
+        osDelay(4000);
     }
 }

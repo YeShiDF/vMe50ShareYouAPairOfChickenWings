@@ -94,7 +94,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM1_Init();
-  MX_TIM5_Init();
+  MX_TIM2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
@@ -106,7 +106,7 @@ int main(void)
   Motor_InitAll();      /* 配方向脚 + 启动 PWM，此时 STBY 仍是低 */
   Motor_Enable(1);      /* 打开驱动芯片，忘掉这句电机不会动 */
 
-  Encoder_Init();       /* 启动 TIM5 编码器接口并清零，必须在任务采样前 */
+  Encoder_Init();       /* 启动 TIM2 编码器接口并清零，必须在任务采样前 */
 
   /* USER CODE END 2 */
 
@@ -204,7 +204,7 @@ void SystemClock_Config(void)
 
 /**
   * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM7 interrupt took place, inside
+  * @note   This function is called  when TIM4 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
   * @param  htim : TIM handle
@@ -215,7 +215,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM7)
+  if (htim->Instance == TIM4)
   {
     HAL_IncTick();
   }
