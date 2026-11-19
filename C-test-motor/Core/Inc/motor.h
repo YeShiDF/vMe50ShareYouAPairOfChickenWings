@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "main.h"
+#include "pid.h"          /* 速度环用通用 PID 模块，电机层不自己实现算法 */
 
 /* ---------------- 引脚分配 ----------------
  * 每一路电机 = 2 根方向线 + 1 路 PWM
@@ -41,6 +42,19 @@
 /* 测速采样周期，必须与实际调用间隔严格一致 */
 #define MOTOR_ENC_DT    0.010f
 
+/* 编码器符号：符号统一已经在 encoder.c 的源头做过一次（正转=正计数），
+ * 这里保持 +1，避免二次反号。
+ * 如果以后把 A/B 线对调、或换电机方向，只需要改 encoder.c 那一处。 */
+#define MOTOR_ENC_SIGN  (1.0f)
+
+/* ---------------- 速度环参数 ----------------
+ * kp：误差 1 rpm 时给多少千分比。整机开环增益约 0.78 rpm/千分比，
+ *     所以 kp 超过 1.28 就会过冲，取 0.8 留足余量。
+ * ki：积分项（单位：千分比/秒）。用来消掉纯 P 留下的静差。
+ * 先用这组默认值，调的时候一次只动一个。 */
+#define MOTOR_KP_DEF    0.8f
+#define MOTOR_KI_DEF    4.0f
+
 /* ---------------- 数据结构 ---------------- */
 
 typedef struct {
@@ -59,6 +73,10 @@ typedef struct {
     TIM_HandleTypeDef *enc_tim;   /* 编码器定时器，NULL 表示没有；计数由 encoder.c 统一维护 */
     float              rpm;       /* 输出轴（轮子）转速，滤波后 */
     int32_t            enc_total; /* 累计计数，直线纠偏/里程用 */
+
+    /* ---- 速度环 ---- 追加在末尾，不影响前面字段的偏移 ---- */
+    float              rpm_target;/* 目标转速，正数 = 正转 */
+    PID_t              speed_pid; /* 这台电机自己的 PID 实例（算法在 pid.c） */
 } Motor_t;
 
 extern Motor_t g_motor[MOTOR_NUM];
@@ -102,5 +120,17 @@ float Motor_GetRpm(uint8_t id);
 
 /* 里程：累计计数直接换算，用于直线纠偏 */
 int32_t Motor_GetCount(Motor_t *m);
+
+/* ---------------- 速度环（PID）接口 ----------------
+ * 用法：
+ *   1. 上层给目标转速   Motor_SetRpm(&g_motor[0], 200.0f);
+ *   2. 每 10 ms 调一次  Motor_SpeedLoop(&g_motor[0], MOTOR_ENC_DT);
+ * 注意第 2 步必须紧跟在 Motor_UpdateRpm() 之后，否则用的是上一拍的旧转速。 */
+
+/* 设置目标转速（rpm，正数正转）。会同时清掉积分，避免换目标时带着旧积分冲过头 */
+void Motor_SetRpm(Motor_t *m, float rpm);
+
+/* 速度环一步：读 rpm、算 PID、写占空比。dt_s 是调用间隔（秒） */
+void Motor_SpeedLoop(Motor_t *m, float dt_s);
 
 #endif // C_TEST_MOTOR_MOTOR_H

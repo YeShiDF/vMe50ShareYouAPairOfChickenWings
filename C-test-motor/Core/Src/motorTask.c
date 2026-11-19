@@ -26,7 +26,8 @@ void StartTaskMtrGetSpd(void *argument)
 
         for (uint8_t i = 0; i < MOTOR_NUM; i++) {
             if (g_motor[i].enc_tim != NULL) {
-                Motor_UpdateRpm(&g_motor[i]);
+                Motor_UpdateRpm(&g_motor[i]);                 /* 先测速 */
+                Motor_SpeedLoop(&g_motor[i], MOTOR_ENC_DT);   /* 再闭环 */
             }
         }
 
@@ -59,22 +60,26 @@ void StartMtrTestTask(void *argument)
      * 节奏：停 1s → 20% 转 2s → 停 1s → 40% 转 2s → 停 1s，然后循环。
      * 判断标准：40% 时的 rpm 应该大约是 20% 时的 2 倍（空载、开环近似线性）。
      * 任务函数绝对不能 return，否则会进 prvTaskExitError 关中断死循环。 */
-    /* ---------- 线性度验证（20% → 30% → 40% 阶梯） ----------
-     * 每档转 4 秒，间隔停 1 秒。
-     * 空载开环下，转速应该和占空比近似成正比：
-     *   20% ≈ 150 rpm   30% ≈ 225 rpm   40% ≈ 300 rpm
-     * 如果 40% 明显低于 300（甚至中途停转），说明电源限流了。        */
+    /* ---------- 闭环测试（速度环） ----------
+     * 这次不再直接给占空比，而是给「目标转速」，
+     * 由 StartTaskMtrGetSpd 里的 Motor_SpeedLoop() 每 10 ms 自己算占空比。
+     *
+     * 观察点：
+     *   150 rpm 时 duty 应该稳定在 190 左右；
+     *   300 rpm 时 duty 应该在 385 左右；
+     *   换挡后 0.5~1 秒内应该贴住目标，过冲不超过 10%。
+     * 如果转速爬不上去、duty 一直顶到 1000，说明电源带不动或 kp/ki 太小。 */
+    /* ---------- 恒定 300 rpm：专门用来做外力扰动实验 ----------
+     * 目标一直保持 300 rpm，你可以随时用手捏轮子、加配重、加摩擦，
+     * 观察 duty（占空比千分比）是否自动加大、松手后是否回稳。
+     *
+     * 判断标准：
+     *   稳态时 rpm 应该贴在 300 ± 2，duty 约 385；
+     *   施加阻力时 rpm 会掉，duty 立刻往上顶（这说明闭环在工作）；
+     *   阻力消失后 duty 回落，rpm 有过冲但 2~3 秒内收敛。 */
+    Motor_SetRpm(&g_motor[0], 300.0f);
+
     for (;;) {
-        Motor_SetDuty(&g_motor[0], 0);      /* 停 1 秒，作为参考零点 */
-        osDelay(1000);
-
-        Motor_SetDuty(&g_motor[0], 200);    /* 20% */
-        osDelay(4000);
-
-        Motor_SetDuty(&g_motor[0], 300);    /* 30% */
-        osDelay(4000);
-
-        Motor_SetDuty(&g_motor[0], 400);    /* 40% */
-        osDelay(4000);
+        osDelay(100);   /* 目标不变，PID 在测速任务里每 10 ms 跑一次 */
     }
 }

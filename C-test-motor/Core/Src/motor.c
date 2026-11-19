@@ -82,6 +82,12 @@ void Motor_InitAll(void)
         /* 编码器不在这里启动：由 main.c 里的 Encoder_Init() 统一负责。
            两边都启动/清零同一个 TIM2，会让对方的"上一拍计数"失效。 */
         m->rpm = 0.0f;
+        m->rpm_target = 0.0f;         /* 速度环：目标转速清零 */
+
+        /* 速度环：给这台电机装一个 PID 实例。
+         * 参数来自 motor.h 的默认宏，输出范围就是占空比范围 ±1000 */
+        PID_Init(&m->speed_pid, MOTOR_KP_DEF, MOTOR_KI_DEF, 0.0f,
+                 -(float)MOTOR_DUTY_MAX, (float)MOTOR_DUTY_MAX);
     }
 }
 
@@ -206,7 +212,9 @@ float Motor_UpdateRpm(Motor_t *m)
     int16_t d = Encoder_GetDelta();
     m->enc_total += d;
 
-    float raw = (float)d * 60.0f / (MOTOR_ENC_CPR * MOTOR_ENC_DT);
+    /* 符号统一：本车正占空比 → 负计数，乘 MOTOR_ENC_SIGN 翻正，
+     * 这样「目标 200 rpm、实测 200 rpm」时误差真的是 0 */
+    float raw = MOTOR_ENC_SIGN * (float)d * 60.0f / (MOTOR_ENC_CPR * MOTOR_ENC_DT);
     m->rpm += (raw - m->rpm) * 0.4f;              /* 一阶低通，≈25 ms 滞后 */
     return m->rpm;
 }
@@ -221,4 +229,41 @@ int32_t Motor_GetCount(Motor_t *m)
 {
     if (m == NULL || m->enc_tim == NULL) return 0;
     return m->enc_total;
+}
+
+/* ============================================================
+ *                        速度环（PID）
+ * ------------------------------------------------------------
+ * 为什么是「位置式」而不是「增量式」：
+ *   位置式直接算 final = P + I，逻辑直观、好调；
+ *   增量式算 Δduty，抗饱和更自然但公式绕。先学位置式。
+ *
+ * 为什么一开始没有 D：
+ *   转速是编码器差出来的，本身带量化噪声，D 项对噪声放大 10 倍；
+ *   而电机有惯性，本身就是一阶系统，P + I 已经够用。
+ *   等以后做位置环（走直线）时再加 D，那是另一回事。
+ * ============================================================ */
+
+void Motor_SetRpm(Motor_t *m, float rpm)
+{
+    if (m == NULL) return;
+    m->rpm_target = rpm;
+
+    /* 换目标时清掉 PID 状态：否则从 300 rpm 掉到 0 时，
+     * 积分里还存着「该给 300 多千分比」的记忆，会顶住刹车不放 */
+    PID_Reset(&m->speed_pid);
+}
+
+void Motor_SpeedLoop(Motor_t *m, float dt_s)
+{
+    if (m == NULL || m->enc_tim == NULL) return;
+
+    /* 这一层不再有任何控制算法，只做三件事：
+     *   把「目标、实测、时间」交给 PID，把算出来的量写给电机。
+     * 算法相关的抗饱和、微分滤波、限幅全部在 pid.c 里。 */
+    float out = PID_Update(&m->speed_pid, m->rpm_target, m->rpm, dt_s);
+
+    /* 直接写占空比。不走 Motor_Update() 的斜坡，
+     * 因为斜坡会额外引入 167 ms 的滞后，PID 会因此振荡 */
+    Motor_SetDuty(m, (int16_t)out);
 }

@@ -72,7 +72,11 @@ void Encoder_Update(void)//强制转化成int16_t有利于判断正转还是反�
   /* 差值用 int16_t 做减法，天然处理 65535 -> 0 的回绕。
      例：上次 65530，这次 3，now - last = 3 - 65530 = -65527
          截断成 int16_t 后正好是 +9（跨过了 65535->0）*/
-  s_delta_cnt  = (int16_t)(now - s_last_cnt);
+  /* 符号约定：正占空比 = 正转 = 正计数。
+     本车 A/B 相序接反，硬件上正转会让 CNT 变小，
+     所以在源头取一次反号，之后所有模块（rpm / 里程 / 总计数）
+     看到的都是「正转为正」。要改接线方向，只改这一处。 */
+  s_delta_cnt  = -(int16_t)(now - s_last_cnt);
   s_last_cnt   = now;
   s_total_cnt += s_delta_cnt;
 }
