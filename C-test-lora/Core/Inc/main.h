@@ -57,9 +57,12 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define AUX_Pin GPIO_PIN_8
+#define AUX_GPIO_Port GPIOA
+#define AUX_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
-
+#define delay(ms) HAL_Delay(ms)
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
