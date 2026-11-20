@@ -14,6 +14,7 @@ void StartTaskMainCmd() {//主函数示例
         cmd = 0x00;
 
         osMessageQueueGet(cmdQueueHandle,&cmd,0,osWaitForever);
+        //代码块
     }
 }
 

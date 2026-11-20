@@ -17,15 +17,12 @@ uint8_t rxBit = 0x00;
 /* 定义在 loraTask.c 里，是数组，不是单个字节 */
 extern uint8_t rxData[];
 
-char readBuf[64] = {0};
 void dbg_send(const char *s) {
     HAL_UART_Transmit(&huart1, (const uint8_t *) s, (uint16_t) strlen(s), 200);
 }
 
 lora_state_t lora_init_car() {
     delay(500);
-
-    HAL_UARTEx_ReceiveToIdle(&huart1,NULL,10,NULL,HAL_MAX_DELAY);
 
     char msg[64] = {0};
     uint16_t size = 0;
@@ -67,31 +64,37 @@ lora_state_t lora_init_car() {
 
     delay(50);
     memset(msg,0,sizeof(msg));
-    HAL_UART_Transmit(lora.huart,"AT+RESET\r\n",10,1000);
+    HAL_UART_Transmit(lora.huart,"AT+RESET\r\n",10,100);
     HAL_UARTEx_ReceiveToIdle(lora.huart,msg,64,&size,1000);
     dbg_send(msg);
 
     delay(100);
     HAL_UART_Receive_DMA(lora.huart,&rxBit,1);
+
+    return normal;
 //发送数据格式：地址2位+信道1位+数据
 
 }
 extern osMessageQueueId_t uartSendQueueHandle;
 
 lora_state_t lora_send(uint8_t* data,uint8_t size,loraTarget_t target) {
+    if (data == NULL || size == 0) return config_null;
     if (target == ctrl){
-        delay(100);
+        osDelay(50);
         HAL_UART_Transmit(lora.huart,(uint8_t[]){(uint8_t)(remote.mac>>8),(uint8_t)remote.mac,
             remote.channel},3,100);
         HAL_UART_Transmit(lora.huart,data,size,100);
-        dbg_send(data);
+        return normal;
+        // dbg_send(data);
     }
     if (target == car) {
         delay(100);
         HAL_UART_Transmit(remote.huart,(uint8_t[]){(uint8_t)(lora.mac>>8),(uint8_t)lora.mac,
             lora.channel},3,100);
         HAL_UART_Transmit(remote.huart,data,size,100);
+        return normal;
     }
+    return config_null;
 }
 
 

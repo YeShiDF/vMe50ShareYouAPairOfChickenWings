@@ -51,11 +51,6 @@ typedef struct {
 
 }lora_t;
 
-typedef struct {
-    int size;
-    uint8_t* data;
-}uartSend_t;
-
 typedef enum {
     normal,
     error,
@@ -72,9 +67,6 @@ extern lora_t remote,lora;
 
 lora_state_t lora_init_car(void);
 lora_state_t lora_send(uint8_t* data,uint8_t size,loraTarget_t target);
-uint8_t bufWrite(uint8_t* data,uint8_t size);
-uint8_t bufGet(uint8_t* data);
-void bufClear();
 void dbg_send(const char *s);
 
 #endif //C_TEST_LORA_LORA_H
