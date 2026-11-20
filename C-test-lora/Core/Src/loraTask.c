@@ -6,7 +6,6 @@
 #include "task.h"
 #include "usart.h"
 
-extern lora_t lora;
 
 void StartTaskMainCmd() {//主函数示例
     uint8_t cmd = 0x00;

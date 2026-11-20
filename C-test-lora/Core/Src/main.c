@@ -95,8 +95,8 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-  lora_init_car();
-  lora_send("shabi",5, ctrl);
+  lora_init();
+  lora_send("shabi",5);
 
 
   /* USER CODE END 2 */
