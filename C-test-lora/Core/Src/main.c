@@ -94,9 +94,15 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* 板载 LED：多数 F103 小板是低电平点亮，这里拉高只是先把状态定下来 */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+
+  /* 配置 LoRa：进 AT -> 设参数 -> 复位 -> 挂接收，全程阻塞约 1.5 秒。
+     必须在调度器启动前做，因为 lora_init 里用的是 HAL_Delay，不依赖 RTOS。 */
   lora_init();
-  lora_send("shabi",5);
+
+  /* 自检：给对端发 5 字节，另一块板的串口助手应原样收到 "shabi" */
+  lora_send((uint8_t *)"shabi", 5);
 
 
   /* USER CODE END 2 */

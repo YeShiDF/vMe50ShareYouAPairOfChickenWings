@@ -38,6 +38,12 @@ extern UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN Private defines */
 
+/* USART2 的 DMA 句柄在 usart.c 的 HAL_UART_MspInit 里创建。
+ * CubeMX 只把它们定义在 .c 里，没有导出到头文件，lora.c 挂接收时要用，
+ * 所以在这里补上声明（放在 USER CODE 段，重新生成代码不会丢）。 */
+extern DMA_HandleTypeDef hdma_usart2_rx;
+extern DMA_HandleTypeDef hdma_usart2_tx;
+
 /* USER CODE END Private defines */
 
 void MX_USART1_UART_Init(void);
