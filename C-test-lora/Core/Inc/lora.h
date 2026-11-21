@@ -18,6 +18,8 @@
 #define LORA_AUX_PIN GPIO_PIN_8//aux引脚，暂时没用
 #define LORA_AUX_PORT GPIOA
 
+#define LORA_DEBUG 0
+
 #include <stdint.h>
 
 #include "cmsis_os2.h"
@@ -46,16 +48,14 @@ typedef enum {
     config_null,
     send_time_out,
     send_error,
+    rx_error,
 } lora_state_t;
 
-typedef enum {
-    car,
-    ctrl,
-} loraTarget_t;
-extern lora_t remote,lora_local;
+extern lora_t lora_client,lora_local;
 
 lora_state_t lora_init(void);
 lora_state_t lora_send(uint8_t* data,uint8_t size);
 void dbg_send(const char *s);
+void errReport(lora_state_t err);
 
 #endif //C_TEST_LORA_LORA_H
