@@ -1,7 +1,7 @@
 
 /*
  *
- *
+ *提示：至少需要打开uart的中断/DMA中一项
  *
  *
  */
@@ -54,8 +54,10 @@ typedef enum {
 extern lora_t lora_client,lora_local;
 
 lora_state_t lora_init(void);
+lora_state_t lora_receive(void);
 lora_state_t lora_send(uint8_t* data,uint8_t size);
 void dbg_send(const char *s);
 void errReport(lora_state_t err);
+
 
 #endif //C_TEST_LORA_LORA_H

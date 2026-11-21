@@ -40,7 +40,9 @@ void errReport(lora_state_t err) {
 }
 
 #else
-#define errReport(err)
+void errReport(lora_state_t err) {
+    (void) err;
+}
 #endif
 
 
@@ -61,7 +63,7 @@ lora_state_t lora_init() {
     memset(msg,0,sizeof(msg));
     char b[20] = {0};
     sprintf(b,"AT+LEVEL%d\r\n",LORA_LEVEL);
-    HAL_UART_Transmit(lora_local.huart,b,strlen(b)+1,100);
+    HAL_UART_Transmit(lora_local.huart,b,strlen(b),100);
     HAL_UARTEx_ReceiveToIdle(lora_local.huart,msg,64,&size,1000);
     dbg_send(msg);
 
@@ -95,7 +97,7 @@ lora_state_t lora_init() {
     dbg_send(msg);
 
     delay(100);
-    HAL_UART_Receive_DMA(lora_local.huart,&rxBit,1);
+    lora_receive();
 
     return normal;
 //发送数据格式：地址2位+信道1位+数据
@@ -104,13 +106,13 @@ lora_state_t lora_init() {
 
 lora_state_t lora_receive() {
  if (lora_local.hdma_rx == NULL) {
-     if (HAL_UART_Receive_DMA(lora_local.huart,&rxBit,1)!=HAL_OK) {
+     if (HAL_UART_Receive_IT(lora_local.huart,&rxBit,1)!=HAL_OK) {
          errReport(rx_error);
          return rx_error;
      }
      return normal;
  }
-    if (HAL_UART_Receive_IT(lora_local.huart,&rxBit,1)!=HAL_OK) {
+    if (HAL_UART_Receive_DMA(lora_local.huart,&rxBit,1)!=HAL_OK) {
         errReport(rx_error);
         return rx_error;
     }
@@ -125,9 +127,10 @@ lora_state_t lora_send(uint8_t* data,uint8_t size) {
     buf[0] = (uint8_t)(lora_client.mac>>8);buf[1] = (uint8_t) lora_client.mac;
     buf[2] = (uint8_t)lora_client.channel;
 
-    if (HAL_UART_Transmit(lora_local.huart,buf,3+size,100) != HAL_OK)
-        errReport(send_error);
-        return send_error;
+    if (HAL_UART_Transmit(lora_local.huart,buf,3+size,100) != HAL_OK){
+    errReport(send_error);
+    return send_error;
+}
     return normal;
     // dbg_send(data);
 
