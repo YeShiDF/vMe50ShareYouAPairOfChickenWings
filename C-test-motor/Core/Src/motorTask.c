@@ -77,7 +77,7 @@ void StartMtrTestTask(void *argument)
      *   稳态时 rpm 应该贴在 300 ± 2，duty 约 385；
      *   施加阻力时 rpm 会掉，duty 立刻往上顶（这说明闭环在工作）；
      *   阻力消失后 duty 回落，rpm 有过冲但 2~3 秒内收敛。 */
-    Motor_SetRpm(&g_motor[0], 300.0f);
+    Motor_SetRpm(0, 300.0f);
 
     for (;;) {
         osDelay(100);   /* 目标不变，PID 在测速任务里每 10 ms 跑一次 */

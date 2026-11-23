@@ -225,10 +225,10 @@ float Motor_GetRpm(uint8_t id)
     return g_motor[id].rpm;
 }
 
-int32_t Motor_GetCount(Motor_t *m)
+int32_t Motor_GetCount(uint8_t id)
 {
-    if (m == NULL || m->enc_tim == NULL) return 0;
-    return m->enc_total;
+    if (id >= MOTOR_NUM || g_motor[id].enc_tim == NULL) return 0;
+    return g_motor[id].enc_total;
 }
 
 /* ============================================================
@@ -244,7 +244,13 @@ int32_t Motor_GetCount(Motor_t *m)
  *   等以后做位置环（走直线）时再加 D，那是另一回事。
  * ============================================================ */
 
-void Motor_SetRpm(Motor_t *m, float rpm)
+void Motor_SetRpm(uint8_t id, float rpm)
+{
+    if (id >= MOTOR_NUM) return;
+    Motor_SetRpmPtr(&g_motor[id], rpm);
+}
+
+void Motor_SetRpmPtr(Motor_t *m, float rpm)
 {
     if (m == NULL) return;
     m->rpm_target = rpm;

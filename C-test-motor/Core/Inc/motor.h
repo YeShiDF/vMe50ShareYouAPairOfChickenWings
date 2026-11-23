@@ -110,25 +110,31 @@ void Motor_Coast(Motor_t *m);
 
 
 //上层
-/* 按编号操作，供上层运动学层使用 */
-void Motor_SetSpeed(uint8_t id, int16_t duty);
+/* ---------------- 上层接口：全部按编号 id ----------------
+ * 应用代码（底盘、循迹、比赛逻辑）只调这一组，不碰 Motor_t 指针。
+ * id 越界或该路未配置编码器时，函数内部直接返回，不会崩。 */
+void    Motor_SetSpeed(uint8_t id, int16_t duty);
 int16_t Motor_GetSpeed(uint8_t id);
+float   Motor_GetRpm(uint8_t id);
+int32_t Motor_GetCount(uint8_t id);
 
-/* 测速：按固定周期（MOTOR_ENC_DT）调用，返回输出轴 rpm，带符号 */
+/* ---------------- 以下为内部接口：对单个电机实例操作 ----------------
+ * 表驱动遍历时用（for (i...) Motor_UpdateRpm(&g_motor[i])），
+ * 上层一般不需要直接调。 */
 float Motor_UpdateRpm(Motor_t *m);
-float Motor_GetRpm(uint8_t id);
-
-/* 里程：累计计数直接换算，用于直线纠偏 */
-int32_t Motor_GetCount(Motor_t *m);
 
 /* ---------------- 速度环（PID）接口 ----------------
  * 用法：
- *   1. 上层给目标转速   Motor_SetRpm(&g_motor[0], 200.0f);
+ *   1. 上层给目标转速   Motor_SetRpm(0, 200.0f);
  *   2. 每 10 ms 调一次  Motor_SpeedLoop(&g_motor[0], MOTOR_ENC_DT);
  * 注意第 2 步必须紧跟在 Motor_UpdateRpm() 之后，否则用的是上一拍的旧转速。 */
 
-/* 设置目标转速（rpm，正数正转）。会同时清掉积分，避免换目标时带着旧积分冲过头 */
-void Motor_SetRpm(Motor_t *m, float rpm);
+/* 设置目标转速（rpm，正数正转）。会同时清掉积分，避免换目标时带着旧积分冲过头。
+ * 用法：Motor_SetRpm(0, 300.0f);   —— 第 0 路追 300 rpm */
+void Motor_SetRpm(uint8_t id, float rpm);
+
+/* 内部用：直接对实例操作（表驱动时可以循环传 &g_motor[i]） */
+void Motor_SetRpmPtr(Motor_t *m, float rpm);
 
 /* 速度环一步：读 rpm、算 PID、写占空比。dt_s 是调用间隔（秒） */
 void Motor_SpeedLoop(Motor_t *m, float dt_s);
