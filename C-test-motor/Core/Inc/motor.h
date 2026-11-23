@@ -19,8 +19,8 @@
 
 /* IN2（方向脚）：M1~M4 = PC0 / PC1 / PC2 / PC3
  * IN1（PWM）由 motor.c 里的电机表指定：TIM8_CH1~CH4（PC6~PC9） */
-#define MTR1_DIR_PORT   GPIOC
-#define MTR1_DIR_PIN    GPIO_PIN_0
+#define MTR1_DIR_PORT   GPIOA
+#define MTR1_DIR_PIN    GPIO_PIN_10
 #define MTR2_DIR_PORT   GPIOC
 #define MTR2_DIR_PIN    GPIO_PIN_1
 #define MTR3_DIR_PORT   GPIOC
@@ -42,7 +42,7 @@
 
 /* ---------------- 编码器参数 ----------------
  * 规格书：减速后编码器线数 265.2 线/输出轴圈
- * TIM2 已改为 TIM_ENCODERMODE_TI12（4 倍频）-> 265.2 × 4 = 1060.8
+ * TIM5 已改为 TIM_ENCODERMODE_TI12（4 倍频）-> 265.2 × 4 = 1060.8
  * 注意：改倍频后这个数必须同步改，否则转速差一倍
  * ------------------------------------------ */
 #define MOTOR_ENC_CPR   1060.8f

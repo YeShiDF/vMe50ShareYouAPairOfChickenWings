@@ -6,7 +6,7 @@
   * 每路编码器 = 一个定时器的 CH1/CH2（TI1/TI2），只能接 CH1/CH2，别接 CH3/CH4。
   * 本板按原理图：
   *   0 : TIM1  PA8 / PA9
-  *   1 : TIM2  PA0 / PA1
+  *   1 : TIM5  PA0 / PA1
   *   2 : TIM3  PA6 / PA7
   *   3 : TIM4  PB6 / PB7
   *

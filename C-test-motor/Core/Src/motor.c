@@ -10,7 +10,7 @@
  *
  * 本板按原理图接线（4 片 AT8236，一片一路）：
  *   M1：PWM TIM8_CH1(PC6)，方向 PC0，编码器 TIM1(PA8/PA9)
- *   M2：PWM TIM8_CH2(PC7)，方向 PC1，编码器 TIM2(PA0/PA1)
+ *   M2：PWM TIM8_CH2(PC7)，方向 PC1，编码器 TIM5(PA0/PA1)
  *   M3：PWM TIM8_CH3(PC8)，方向 PC2，编码器 TIM3(PA6/PA7)
  *   M4：PWM TIM8_CH4(PC9)，方向 PC3，编码器 TIM4(PB6/PB7)
  * ---------------------------------------- */
@@ -64,7 +64,7 @@ void Motor_InitAll(void)
         HAL_TIM_PWM_Start(m->htim, m->channel);
 
         /* 编码器不在这里启动：由 main.c 里的 Encoder_Init() 统一负责。
-           两边都启动/清零同一个 TIM2，会让对方的"上一拍计数"失效。 */
+           两边都启动/清零同一个 TIM5，会让对方的"上一拍计数"失效。 */
         m->rpm = 0.0f;
         m->rpm_target = 0.0f;         /* 速度环：目标转速清零 */
 
