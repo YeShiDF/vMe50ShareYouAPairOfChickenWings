@@ -6,19 +6,27 @@
 #include "pid.h"          /* 速度环用通用 PID 模块，电机层不自己实现算法 */
 
 /* ---------------- 引脚分配 ----------------
- * 每一路电机 = 2 根方向线 + 1 路 PWM
- * PWM 必须来自定时器通道，方向上电前先拉低
+ * AT8236（新板）：一片芯片驱动一路电机，每路只要 2 根线
+ *   IN1 = PWM 输入，必须来自定时器通道（本板是 TIM8_CHx）
+ *   IN2 = 方向脚，普通推挽输出
+ * 真值表（与 TB6612 一样）：
+ *   IN1=1 IN2=0 -> 正转
+ *   IN1=0 IN2=1 -> 反转
+ *   IN1=1 IN2=1 -> 短路制动
+ *   IN1=0 IN2=0 -> 滑行（输出高阻）
+ * 注意：AT8236 没有 STBY 脚，不需要"总使能"
  * ------------------------------------------ */
 
-/* M1：已接线（PB15 / PB13 / PA8-TIM1_CH1） */
-#define MTR1_IN1_PORT   GPIOB
-#define MTR1_IN1_PIN    GPIO_PIN_15
-#define MTR1_IN2_PORT   GPIOB
-#define MTR1_IN2_PIN    GPIO_PIN_13
-
-/* STBY：一片 TB6612 共用一个，高电平工作 */
-#define STBY_PORT       GPIOB
-#define STBY_PIN        GPIO_PIN_14
+/* IN2（方向脚）：M1~M4 = PC0 / PC1 / PC2 / PC3
+ * IN1（PWM）由 motor.c 里的电机表指定：TIM8_CH1~CH4（PC6~PC9） */
+#define MTR1_DIR_PORT   GPIOC
+#define MTR1_DIR_PIN    GPIO_PIN_0
+#define MTR2_DIR_PORT   GPIOC
+#define MTR2_DIR_PIN    GPIO_PIN_1
+#define MTR3_DIR_PORT   GPIOC
+#define MTR3_DIR_PIN    GPIO_PIN_2
+#define MTR4_DIR_PORT   GPIOC
+#define MTR4_DIR_PIN    GPIO_PIN_3
 
 /* ---------------- 参数 ---------------- */
 
@@ -58,19 +66,17 @@
 /* ---------------- 数据结构 ---------------- */
 
 typedef struct {
-    GPIO_TypeDef      *in1_port;
-    uint16_t           in1_pin;
-    GPIO_TypeDef      *in2_port;
-    uint16_t           in2_pin;
+    TIM_HandleTypeDef *htim;      /* IN1 的定时器（TIM8）；填 NULL = 这一路没接线 */
+    uint32_t           channel;   /* IN1 的通道（TIM8_CH1~CH4） */
 
-    TIM_HandleTypeDef *htim;      /* 填 NULL 表示这一路还没接线，全部接口自动跳过 */
-    uint32_t           channel;
+    GPIO_TypeDef      *dir_port;  /* IN2 端口（方向脚） */
+    uint16_t           dir_pin;   /* IN2 引脚 */
 
     int16_t            duty;      /* 当前实际输出，-1000 ~ +1000 */
     int16_t            target;    /* 斜坡目标值 */
     uint16_t           slew;      /* 每次 Update 的最大步长 */
 
-    TIM_HandleTypeDef *enc_tim;   /* 编码器定时器，NULL 表示没有；计数由 encoder.c 统一维护 */
+    uint8_t            enc_id;    /* 用第几路编码器（0~3），ENC_NONE = 没有 */
     float              rpm;       /* 输出轴（轮子）转速，滤波后 */
     int32_t            enc_total; /* 累计计数，直线纠偏/里程用 */
 
@@ -86,7 +92,8 @@ extern Motor_t g_motor[MOTOR_NUM];
 /* 初始化所有已配置电机：开时钟、配方向脚、启动 PWM */
 void Motor_InitAll(void);
 
-/* 使能/失能整片驱动（STBY）。0 = 待机，输出全关 */
+/* 兼容旧代码：AT8236 没有 STBY 总使能脚，这个函数现在只是空壳，
+ * 传 0 时让所有电机滑行。保留它只为让 main.c 的调用还能编译，后面会删。 */
 void Motor_Enable(uint8_t on);
 
 

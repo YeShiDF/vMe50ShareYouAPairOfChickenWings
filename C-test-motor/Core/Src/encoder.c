@@ -1,41 +1,38 @@
 /**
   ******************************************************************************
   * @file    encoder.c
-  * @brief   霍尔编码器驱动实现（TIM2 编码器模式）
+  * @brief   霍尔编码器驱动实现（四路，TIM1~TIM4 编码器模式）
   ******************************************************************************
   */
 
 #include "encoder.h"
-#include "tim.h"        /* htim2 */
 #include "usart.h"      /* huart2，printf 重定向要用 */
 
 /* ==========================================================================
- * 一、内部状态（static：只在本文件可见，外部改不到）
- * ========================================================================== */
-
-/** 上一次读到的计数值（注意是 int16_t，不是 uint16_t） */
-static int16_t s_last_cnt = 0;
-
-/** 这一段时间内的增量（可能为负，表示反转） */
-static int16_t s_delta_cnt = 0;
-
-/** 累计计数（int32_t，够跑很久：±21 亿格） */
-static int32_t s_total_cnt = 0;
+ * 一、编码器表
+ * ==========================================================================
+ * 字段顺序：定时器, 上次计数, 增量, 累计计数
+ * 后三个初值给 0，Init 时会重新对齐。
+ */
+Encoder_t g_enc[ENC_NUM] = {
+    { &htim1, 0, 0, 0 },   /* 0：左前，PA8 / PA9  */
+    { &htim2, 0, 0, 0 },   /* 1：左后，PA0 / PA1  */
+    { &htim3, 0, 0, 0 },   /* 2：右前，PA6 / PA7  */
+    { &htim4, 0, 0, 0 },   /* 3：右后，PB6 / PB7  */
+};
 
 
 /* ==========================================================================
  * 二、printf 重定向
  * ==========================================================================
  * 用 arm-none-eabi-gcc 时，printf 最终会调到 _write()，
- * 而 STM32CubeMX 生成的 syscalls.c 里 _write() 会去调 __io_putchar()。
- * 所以我们只实现 __io_putchar()，printf 就能从 USART2 发出去。
+ * 而 CubeMX 生成的 syscalls.c 里 _write() 会去调 __io_putchar()。
  */
-
 int __io_putchar(int ch)
 {
-  uint8_t c = (uint8_t)ch;
-  HAL_UART_Transmit(&huart2, &c, 1, 0xFFFF);
-  return ch;
+    uint8_t c = (uint8_t)ch;
+    HAL_UART_Transmit(&huart2, &c, 1, 0xFFFF);
+    return ch;
 }
 
 
@@ -43,74 +40,77 @@ int __io_putchar(int ch)
  * 三、接口实现
  * ========================================================================== */
 
-/**
- * @brief 启动编码器接口并清零
- */
-void Encoder_Init(void)
+void Encoder_InitAll(void)
 {
-  /* 打开 TIM2 的编码器接口，两个通道都用 */
-  /* （这一步不能少：CubeMX 只是"配置"了 TIM2，没有"启动"它） */
-  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+    for (uint8_t i = 0; i < ENC_NUM; i++) {
+        Encoder_t *e = &g_enc[i];
+        if (e->htim == NULL) continue;
 
-  /* 计数器从 0 开始 */
-  __HAL_TIM_SET_COUNTER(&htim2, 0);
+        /* CubeMX 只是"配置"了定时器，必须再"启动"它才会真正计数 */
+        HAL_TIM_Encoder_Start(e->htim, TIM_CHANNEL_ALL);
 
-  s_last_cnt  = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
-  s_delta_cnt = 0;
-  s_total_cnt = 0;
+        __HAL_TIM_SET_COUNTER(e->htim, 0);
+        e->last  = 0;
+        e->delta = 0;
+        e->total = 0;
+    }
 }
 
-/**
- * @brief 读一次计数器，算出增量并累加
- */
-void Encoder_Update(void)//强制转化成int16_t有利于判断正转还是反转
+void Encoder_UpdateAll(void)
 {
-  /* now 是 int16_t：把 0 ~ 65535 的 CNT 解释成 -32768 ~ 32767
-     这样正转反转都能正确表示 */
-  int16_t now = (int16_t)__HAL_TIM_GET_COUNTER(&htim2);
+    for (uint8_t i = 0; i < ENC_NUM; i++) {
+        Encoder_t *e = &g_enc[i];
+        if (e->htim == NULL) continue;
 
-  /* 差值用 int16_t 做减法，天然处理 65535 -> 0 的回绕。
-     例：上次 65530，这次 3，now - last = 3 - 65530 = -65527
-         截断成 int16_t 后正好是 +9（跨过了 65535->0）*/
-  /* 符号约定：正占空比 = 正转 = 正计数。
-     本车 A/B 相序接反，硬件上正转会让 CNT 变小，
-     所以在源头取一次反号，之后所有模块（rpm / 里程 / 总计数）
-     看到的都是「正转为正」。要改接线方向，只改这一处。 */
-  s_delta_cnt  = -(int16_t)(now - s_last_cnt);
-  s_last_cnt   = now;
-  s_total_cnt += s_delta_cnt;
+        /* 把 0~65535 的 CNT 解释成 -32768~32767，正反都能表示 */
+        int16_t now = (int16_t)__HAL_TIM_GET_COUNTER(e->htim);
+
+        /* 用 int16_t 做减法，天然处理 65535 -> 0 的回绕：
+           上次 65530、这次 3，now-last = -65527，截断成 int16_t 正好是 +9 */
+        /* 符号约定：正占空比 = 正转 = 正计数。
+           本车 A/B 相序接反，硬件上正转会让 CNT 变小，所以在源头取一次反号。
+           以后换电机方向/对调 A、B 线，只改这一行。 */
+        e->delta  = -(int16_t)(now - e->last);
+        e->last   = now;
+        e->total += e->delta;
+    }
 }
 
-void Encoder_Reset(void)//里程表归零
+void Encoder_Reset(uint8_t id)
 {
-  s_total_cnt = 0;
+    if (id >= ENC_NUM) return;
+    g_enc[id].total = 0;
 }
 
-int16_t Encoder_GetDelta(void)//这10ms走了多少，瞬时速度
+void Encoder_ResetAll(void)
 {
-  return s_delta_cnt;
+    for (uint8_t i = 0; i < ENC_NUM; i++) {
+        g_enc[i].total = 0;
+    }
 }
 
-int32_t Encoder_GetTotal(void)//路程总和，循迹可能有用
+int16_t Encoder_GetDelta(uint8_t id)
 {
-  return s_total_cnt;
+    if (id >= ENC_NUM) return 0;
+    return g_enc[id].delta;
 }
 
-float Encoder_GetDistance_mm(void)
+int32_t Encoder_GetTotal(uint8_t id)
 {
-  return (float)s_total_cnt * ENC_MM_PER_COUNT;
+    if (id >= ENC_NUM) return 0;
+    return g_enc[id].total;
 }
 
-float Encoder_GetSpeed_mm_s(uint32_t dt_ms)//PID反馈量
+float Encoder_GetDistance_mm(uint8_t id)
 {
-  if (dt_ms == 0U)//除0保护
-  {
-    return 0.0f;
-  }
+    if (id >= ENC_NUM) return 0.0f;
+    return (float)g_enc[id].total * ENC_MM_PER_COUNT;
+}
 
-  /* 这一段走了多少毫米 = 计数 × 每计数多少毫米 */
-  float dist_mm = (float)s_delta_cnt * ENC_MM_PER_COUNT;
+float Encoder_GetSpeed_mm_s(uint8_t id, uint32_t dt_ms)
+{
+    if (id >= ENC_NUM || dt_ms == 0U) return 0.0f;
 
-  /* 毫米 / 秒 = 毫米 / (毫秒 / 1000) */
-  return dist_mm * 1000.0f / (float)dt_ms;
+    float dist_mm = (float)g_enc[id].delta * ENC_MM_PER_COUNT;
+    return dist_mm * 1000.0f / (float)dt_ms;
 }

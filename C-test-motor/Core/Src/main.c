@@ -102,14 +102,16 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* PWM 改成 20 kHz：8 MHz / (0+1) / (399+1)
-     必须在 Motor_InitAll() 之前，因为 SetDuty 会按 ARR 换算 CCR */
-  __HAL_TIM_SET_PRESCALER(&htim1, 0);
-  __HAL_TIM_SET_AUTORELOAD(&htim1, 399);
+     必须在 Motor_InitAll() 之前，因为 SetDuty 会按 ARR 换算 CCR
+     注意：PWM 已经从 TIM1 换到 TIM8（TIM1 现在是编码器），
+           这里如果还写 htim1，会把编码器的计数上限改成 399，计数直接废掉 */
+  __HAL_TIM_SET_PRESCALER(&htim8, 0);
+  __HAL_TIM_SET_AUTORELOAD(&htim8, 399);
 
   Motor_InitAll();      /* 配方向脚 + 启动 PWM，此时 STBY 仍是低 */
   Motor_Enable(1);      /* 打开驱动芯片，忘掉这句电机不会动 */
 
-  Encoder_Init();       /* 启动 TIM2 编码器接口并清零，必须在任务采样前 */
+  Encoder_InitAll();    /* 启动 TIM1~TIM4 四路编码器接口并清零，必须在任务采样前 */
 
   /* USER CODE END 2 */
 

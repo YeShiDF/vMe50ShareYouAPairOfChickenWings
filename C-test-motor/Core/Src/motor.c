@@ -5,23 +5,20 @@
 /* ---------------- 电机表 ----------------
  * 加一路电机只要在这里填一行，其余逻辑不用改。
  * htim 填 NULL 的条目会被所有接口自动跳过。
- * 字段顺序：in1口, in1脚, in2口, in2脚, 定时器, 通道,
+ * 字段顺序：PWM定时器, PWM通道, 方向口, 方向脚,
  *           duty, target, slew, 编码器定时器, rpm, 累计计数
+ *
+ * 本板按原理图接线（4 片 AT8236，一片一路）：
+ *   M1：PWM TIM8_CH1(PC6)，方向 PC0，编码器 TIM1(PA8/PA9)
+ *   M2：PWM TIM8_CH2(PC7)，方向 PC1，编码器 TIM2(PA0/PA1)
+ *   M3：PWM TIM8_CH3(PC8)，方向 PC2，编码器 TIM3(PA6/PA7)
+ *   M4：PWM TIM8_CH4(PC9)，方向 PC3，编码器 TIM4(PB6/PB7)
  * ---------------------------------------- */
 Motor_t g_motor[MOTOR_NUM] = {
-    /* M1：PB15 / PB13 / PA8(TIM1_CH1)，编码器 PA0/PA1(TIM2) */
-    { MTR1_IN1_PORT, MTR1_IN1_PIN,
-      MTR1_IN2_PORT, MTR1_IN2_PIN,
-      &htim1, TIM_CHANNEL_1,
-      0, 0, MOTOR_SLEW_DEF,
-      &htim2, 0.0f, 0 },
-
-    /* M2 / M3 / M4：接线后照上面的格式补，例如
-     * { GPIOB, GPIO_PIN_12, GPIOC, GPIO_PIN_0, &htim1, TIM_CHANNEL_2,
-     *   0, 0, MOTOR_SLEW_DEF, NULL, 0.0f }, */
-    { 0 },
-    { 0 },
-    { 0 },
+    { &htim8, TIM_CHANNEL_1, MTR1_DIR_PORT, MTR1_DIR_PIN, 0, 0, MOTOR_SLEW_DEF, 0, 0.0f, 0 },
+    { &htim8, TIM_CHANNEL_2, MTR2_DIR_PORT, MTR2_DIR_PIN, 0, 0, MOTOR_SLEW_DEF, 1, 0.0f, 0 },
+    { &htim8, TIM_CHANNEL_3, MTR3_DIR_PORT, MTR3_DIR_PIN, 0, 0, MOTOR_SLEW_DEF, 2, 0.0f, 0 },
+    { &htim8, TIM_CHANNEL_4, MTR4_DIR_PORT, MTR4_DIR_PIN, 0, 0, MOTOR_SLEW_DEF, 3, 0.0f, 0 },
 };
 
 //初始化
@@ -44,30 +41,17 @@ static void Motor_PinInit(Motor_t *m)
     gpio.Pull  = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
 
-    Motor_Clock(m->in1_port);
-    gpio.Pin = m->in1_pin;
-    HAL_GPIO_Init(m->in1_port, &gpio);
+    Motor_Clock(m->dir_port);
+    gpio.Pin = m->dir_pin;
+    HAL_GPIO_Init(m->dir_port, &gpio);
 
-    Motor_Clock(m->in2_port);
-    gpio.Pin = m->in2_pin;
-    HAL_GPIO_Init(m->in2_port, &gpio);
-
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(m->dir_port, m->dir_pin, GPIO_PIN_RESET);
 }
 
 void Motor_InitAll(void)
 {
-    GPIO_InitTypeDef gpio = {0};
-
-    /* STBY 先配好并拉低，保证初始化期间电机绝对不会动 */
-    Motor_Clock(STBY_PORT);
-    gpio.Pin   = STBY_PIN;
-    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull  = GPIO_NOPULL;
-    gpio.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(STBY_PORT, &gpio);
-    HAL_GPIO_WritePin(STBY_PORT, STBY_PIN, GPIO_PIN_RESET);
+    /* AT8236 没有 STBY：方向脚在 Motor_PinInit() 里被拉低，
+       此刻 IN1(PWM) 还没启动、输出恒为 0，所以电机不会动 */
 
     for (uint8_t i = 0; i < MOTOR_NUM; i++) {
         Motor_t *m = &g_motor[i];
@@ -91,10 +75,9 @@ void Motor_InitAll(void)
     }
 }
 
-void Motor_Enable(uint8_t on)//作用：打开或者关闭总使能
+void Motor_Enable(uint8_t on)
 {
-    HAL_GPIO_WritePin(STBY_PORT, STBY_PIN, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
-
+    /* AT8236 没有总使能脚；这里只保留"关的时候全部滑行"的行为 */
     if (!on) {
         for (uint8_t i = 0; i < MOTOR_NUM; i++) {
             if (g_motor[i].htim != NULL) Motor_Coast(&g_motor[i]);
@@ -110,23 +93,23 @@ void Motor_SetDuty(Motor_t *m, int16_t duty)//限幅，正转反转滑行，改�
     if (duty < -MOTOR_DUTY_MAX) duty = -MOTOR_DUTY_MAX;
     m->duty = duty;
 
-    /* 正转 IN1=H / IN2=L；反转相反；0 表示两脚都低 -> 高阻滑行 */
-    if (duty > 0) {
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-    } else if (duty < 0) {
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
-    } else {
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-    }
-
     /* 千分比换算成 CCR，自动适配当前 ARR，换定时器或改频率都不用动这里 */
     uint32_t span = __HAL_TIM_GET_AUTORELOAD(m->htim) + 1u;
-    uint32_t mag  = (uint32_t)(duty >= 0 ? duty : -duty);
-    __HAL_TIM_SET_COMPARE(m->htim, m->channel, mag * span / MOTOR_DUTY_MAX);
-    //CCR = |duty| × (ARR+1) / 1000
+
+    if (duty >= 0) {
+        /* 正转：IN2=0，IN1 的占空比就是 duty */
+        HAL_GPIO_WritePin(m->dir_port, m->dir_pin, GPIO_PIN_RESET);
+        __HAL_TIM_SET_COMPARE(m->htim, m->channel,
+                              (uint32_t)duty * span / MOTOR_DUTY_MAX);
+    } else {
+        /* 反转：IN2=1。此时 IN1=1 是"刹车"、IN1=0 才是"反转"，所以要反着算：
+         *   duty=-100  -> CCR=90%  -> 90% 时间刹车 + 10% 时间反转 -> 净 10% 反转
+         *   duty=-1000 -> CCR=0    -> 全程反转
+         * 这就是常说的 locked anti-phase 驱动。 */
+        HAL_GPIO_WritePin(m->dir_port, m->dir_pin, GPIO_PIN_SET);
+        __HAL_TIM_SET_COMPARE(m->htim, m->channel,
+                              (uint32_t)(MOTOR_DUTY_MAX + duty) * span / MOTOR_DUTY_MAX);
+    }
 }
 
 void Motor_SetTarget(Motor_t *m, int16_t target)//记下目标值并限幅
@@ -165,9 +148,10 @@ void Motor_Brake(Motor_t *m)
 {
     if (m == NULL || m->htim == NULL) return;
 
-    __HAL_TIM_SET_COMPARE(m->htim, m->channel, 0);
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
+    /* 短路制动：IN1=100%、IN2=1，两个输出都被拉低，绕组被短接 */
+    __HAL_TIM_SET_COMPARE(m->htim, m->channel,
+                          __HAL_TIM_GET_AUTORELOAD(m->htim) + 1u);
+    HAL_GPIO_WritePin(m->dir_port, m->dir_pin, GPIO_PIN_SET);
 
     m->duty   = 0;
     m->target = 0;
@@ -177,9 +161,9 @@ void Motor_Coast(Motor_t *m)
 {
     if (m == NULL || m->htim == NULL) return;
 
+    /* 滑行：IN1=0、IN2=0，输出高阻，靠惯性慢慢停 */
     __HAL_TIM_SET_COMPARE(m->htim, m->channel, 0);
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(m->dir_port, m->dir_pin, GPIO_PIN_RESET);
 
     m->duty   = 0;
     m->target = 0;
@@ -205,11 +189,11 @@ int16_t Motor_GetSpeed(uint8_t id)
  */
 float Motor_UpdateRpm(Motor_t *m)
 {
-    if (m == NULL || m->enc_tim == NULL) return 0.0f;
+    if (m == NULL || m->enc_id >= ENC_NUM) return 0.0f;
 
     /* 计数只从 encoder.c 取：读 CNT、处理回绕都归它管，
        这里拿到的就是"上一拍到现在转了多少格" */
-    int16_t d = Encoder_GetDelta();
+    int16_t d = Encoder_GetDelta(m->enc_id);
     m->enc_total += d;
 
     /* 符号统一：本车正占空比 → 负计数，乘 MOTOR_ENC_SIGN 翻正，
@@ -227,7 +211,7 @@ float Motor_GetRpm(uint8_t id)
 
 int32_t Motor_GetCount(uint8_t id)
 {
-    if (id >= MOTOR_NUM || g_motor[id].enc_tim == NULL) return 0;
+    if (id >= MOTOR_NUM || g_motor[id].enc_id >= ENC_NUM) return 0;
     return g_motor[id].enc_total;
 }
 
@@ -262,7 +246,7 @@ void Motor_SetRpmPtr(Motor_t *m, float rpm)
 
 void Motor_SpeedLoop(Motor_t *m, float dt_s)
 {
-    if (m == NULL || m->enc_tim == NULL) return;
+    if (m == NULL || m->enc_id >= ENC_NUM) return;
 
     /* 这一层不再有任何控制算法，只做三件事：
      *   把「目标、实测、时间」交给 PID，把算出来的量写给电机。

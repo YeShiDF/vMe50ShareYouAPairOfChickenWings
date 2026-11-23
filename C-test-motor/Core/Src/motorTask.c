@@ -16,16 +16,16 @@ void StartTaskMtrGetSpd(void *argument)
 
     /* 进循环前先空转一拍：Encoder_Update() 会把当前 CNT 记成基准，
      * 这一次的 delta 不参与计算，避免第一拍算出大得离谱的转速。 */
-    Encoder_Update();
+    Encoder_UpdateAll();
 
     uint32_t wake = osKernelGetTickCount();
 
     for (;;) {
         /* ---- 先读编码器，再算转速 ---- */
-        Encoder_Update();
+        Encoder_UpdateAll();
 
         for (uint8_t i = 0; i < MOTOR_NUM; i++) {
-            if (g_motor[i].enc_tim != NULL) {
+            if (g_motor[i].enc_id < ENC_NUM) {
                 Motor_UpdateRpm(&g_motor[i]);                 /* 先测速 */
                 Motor_SpeedLoop(&g_motor[i], MOTOR_ENC_DT);   /* 再闭环 */
             }
