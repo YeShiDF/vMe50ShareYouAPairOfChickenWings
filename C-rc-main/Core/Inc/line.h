@@ -3,6 +3,7 @@
 #define C_RC_MAIN_LINE_H
 
 #include "main.h"
+#include "chassis.h"
 
 #ifndef delay
 #define delay(x) HAL_Delay(x)
