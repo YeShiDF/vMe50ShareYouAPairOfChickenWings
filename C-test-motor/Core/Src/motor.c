@@ -75,6 +75,7 @@ void Motor_InitAll(void)
     }
 }
 
+//换芯片后不用使能，没啥用
 void Motor_Enable(uint8_t on)
 {
     /* AT8236 没有总使能脚；这里只保留"关的时候全部滑行"的行为 */
@@ -112,6 +113,7 @@ void Motor_SetDuty(Motor_t *m, int16_t duty)//限幅，正转反转滑行，改�
     }
 }
 
+//调试用，闭环不走这里
 void Motor_SetTarget(Motor_t *m, int16_t target)//记下目标值并限幅
 {
     if (m == NULL || m->htim == NULL) return;
@@ -121,6 +123,7 @@ void Motor_SetTarget(Motor_t *m, int16_t target)//记下目标值并限幅
     m->target = target;
 }
 
+//调试用
 void Motor_Update(Motor_t *m)//（slew限制）
 {
     if (m == NULL || m->htim == NULL) return;
@@ -144,6 +147,7 @@ void Motor_Update(Motor_t *m)//（slew限制）
     Motor_SetDuty(m, next);
 }
 
+//短路制动
 void Motor_Brake(Motor_t *m)
 {
     if (m == NULL || m->htim == NULL) return;
@@ -157,6 +161,7 @@ void Motor_Brake(Motor_t *m)
     m->target = 0;
 }
 
+//输出滑行
 void Motor_Coast(Motor_t *m)
 {
     if (m == NULL || m->htim == NULL) return;
