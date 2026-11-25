@@ -1,29 +1,51 @@
 #include "chassis.h"
 
-int16_t mtrSpd[4] ={0};
-
+#include <stdlib.h>
+static void chassisUpdate();
+int rotationalSpeed,horizontalSpeed;
 void chassisInit() {
-    Motor_InitAll();
+    for (int i = 0; i < 4; i++) {
+        Motor_SetRpm(i,0);
+    }
+    rotationalSpeed = 0;
+    horizontalSpeed = 0;
+    chassisUpdate();
 }
 
-void chassisCircle(float percentage) {//设正转为顺时针
-    float rpm = percentage * MAX_MOTOR_RPM;
-
-    for (uint8_t i = 0; i < 4; i++) {
-
+static void chassisUpdate() {
+    for (int i = 0; i < 4; i++) {
+        int spd = horizontalSpeed + ((i%2)? -rotationalSpeed : rotationalSpeed);
+        if (abs(spd) > 100) spd = (spd>0)?100:-100;
+        Motor_SetRpm(i,spd*10);
     }
 }
 
-void chassisAddCircle(float percentage) {
-    //增量旋转
+int chassisSetSpd(int perc) {
+    if (abs(perc) > 100) perc = (perc>0)?100:-100;
+    horizontalSpeed = perc;
+    chassisUpdate();
+    return horizontalSpeed;
 }
 
-void chassisSetSpd(float percentage) {
-    //百分比设置速度
+int chassisAddSpd(int perc) {
+    if (abs(perc) > 100) perc = (perc>0)?100:-100;
+    horizontalSpeed += perc;
+    if (abs(horizontalSpeed) > 100) horizontalSpeed = (horizontalSpeed>0)?100:-100;
+    chassisUpdate();
+    return horizontalSpeed;
 }
 
-void chassisAddSpeed(float percentage) {
-    //百分比增量速度
+int chassisSetCircle(int perc) {
+    if (abs(perc) > 100) perc = (perc>0)?100:-100;
+    rotationalSpeed = perc;
+    chassisUpdate();
+    return rotationalSpeed;
 }
 
-
+int chassisAddCircle(int perc) {
+    if (abs(perc) > 100) perc = (perc>0)?100:-100;
+    rotationalSpeed += perc;
+    if (abs(rotationalSpeed) > 100) rotationalSpeed = (rotationalSpeed>0)?100:-100;
+    chassisUpdate();
+    return rotationalSpeed;
+}
